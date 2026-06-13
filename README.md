@@ -22,21 +22,52 @@ Full-stack accounting dashboard that uses AI to automatically extract financial 
 - **PDF:** pdf-parse
 - **State:** Zustand (client), in-memory store (server)
 
-## Getting Started
+## Getting Started (Desktop EXE)
+
+### Build the Windows Installer on your Windows machine:
 
 ```bash
+# Clone the repo
+git clone https://github.com/MWCSU3/CBS-Accounting.git
+cd CBS-Accounting
+
 # Install dependencies
 npm install
 
 # Copy environment variables
 cp .env.example .env
-# (Optional) Add your OpenAI API key to .env
+# Add your OpenAI API key to .env (optional but recommended)
 
-# Run development server
+# Build the Windows .exe installer
+npm run electron:build
+```
+
+This produces `dist-electron/CBS-Accounting-Setup-1.0.0.exe` — a full installer that creates a desktop shortcut.
+
+### Or run in dev mode (web browser):
+
+```bash
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
+
+### Desktop App Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run electron:dev` | Build & run locally in Electron (dev mode) |
+| `npm run electron:build` | Build Windows `.exe` installer (NSIS) |
+| `npm run electron:build-dir` | Build unpacked directory (faster, for testing) |
+
+### Where Data is Stored
+
+When running as a desktop app, all your data is stored locally:
+- **Windows:** `%APPDATA%/cbs-accounting/data/`
+- Files: `transactions.json`, `invoices.json`, `documents.json`
+- Uploaded documents: `%APPDATA%/cbs-accounting/uploads/`
+
+No cloud database required. Your financial data never leaves your machine (except AI extraction calls to OpenAI if you enable it).
 
 ## API Endpoints
 
@@ -59,6 +90,29 @@ Open [http://localhost:3000](http://localhost:3000)
 3. **AI Analysis** — OpenAI extracts structured data (vendor, amounts, dates, categories)
 4. **Fallback** — If no API key, rule-based regex extraction runs
 5. **Storage** — Document + extracted data saved, available for invoice/transaction creation
+
+## Architecture (Desktop App)
+
+```
+┌─────────────────────────────────────────────────┐
+│  Electron Shell (main.js)                       │
+│  ┌───────────────────────────────────────────┐  │
+│  │  Next.js Standalone Server (localhost)     │  │
+│  │  ┌─────────┐  ┌──────────────────────┐   │  │
+│  │  │ React UI│  │ API Routes            │   │  │
+│  │  │ (Pages) │  │ • /api/documents      │   │  │
+│  │  │         │  │ • /api/transactions   │   │  │
+│  │  │         │  │ • /api/invoices       │   │  │
+│  │  │         │  │ • /api/ai-extract     │   │  │
+│  │  └─────────┘  └──────────────────────┘   │  │
+│  └───────────────────────────────────────────┘  │
+│           │                    │                 │
+│  ┌────────▼────────┐  ┌──────▼───────────┐     │
+│  │ Local JSON Files │  │ OpenAI API (web) │     │
+│  │ %APPDATA%/data/  │  │ GPT-4o-mini      │     │
+│  └──────────────────┘  └──────────────────┘     │
+└─────────────────────────────────────────────────┘
+```
 
 ## Project Structure
 

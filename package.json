@@ -1,12 +1,20 @@
 {
-  "name": "accounting-dashboard",
+  "name": "cbs-accounting",
   "version": "1.0.0",
   "private": true,
+  "description": "CBS Accounting - AI-Powered Small Business Desktop Dashboard",
+  "author": "CBS",
+  "main": "electron/main.js",
+  "homepage": "./",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "electron:dev": "next build && electron .",
+    "electron:build": "next build && node scripts/prepare-electron.js && electron-builder --win",
+    "electron:build-dir": "next build && node scripts/prepare-electron.js && electron-builder --win --dir",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "next": "^14.2.0",
@@ -35,6 +43,64 @@
     "postcss": "^8.4.0",
     "autoprefixer": "^10.4.0",
     "eslint": "^8.57.0",
-    "eslint-config-next": "^14.2.0"
+    "eslint-config-next": "^14.2.0",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.0"
+  },
+  "build": {
+    "appId": "com.cbs.accounting",
+    "productName": "CBS Accounting",
+    "copyright": "Copyright © 2024 CBS",
+    "directories": {
+      "buildResources": "electron/resources",
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      "!node_modules",
+      "!src",
+      "!.next"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "standalone",
+        "filter": ["**/*"]
+      },
+      {
+        "from": ".next/static",
+        "to": "standalone/.next/static",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "public",
+        "to": "standalone/public",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "electron/resources/icon.ico",
+      "artifactName": "CBS-Accounting-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "electron/resources/icon.ico",
+      "uninstallerIcon": "electron/resources/icon.ico",
+      "installerHeaderIcon": "electron/resources/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CBS Accounting"
+    },
+    "portable": {
+      "artifactName": "CBS-Accounting-Portable-${version}.${ext}"
+    }
   }
 }
