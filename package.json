@@ -15,7 +15,7 @@
     "electron:build": "next build && node scripts/prepare-electron.js && electron-builder --win",
     "electron:build-dir": "next build && node scripts/prepare-electron.js && electron-builder --win --dir",
     "electron:portable": "next build && node scripts/prepare-electron.js && electron-builder --win portable",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "npx --no electron-builder install-app-deps || true"
   },
   "dependencies": {
     "next": "^14.2.0",
@@ -90,15 +90,12 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "electron/resources/icon.ico",
       "artifactName": "CBS-Accounting-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
       "runAfterFinish": true,
-      "installerIcon": "electron/resources/icon.ico",
-      "uninstallerIcon": "electron/resources/icon.ico",
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "CBS Accounting",
