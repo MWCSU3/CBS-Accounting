@@ -4,9 +4,31 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const net = require('net');
 
-let mainWindow;
-let serverProcess;
+// ===== SINGLE INSTANCE LOCK =====
+// Prevents multiple windows from opening
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  // Another instance is already running — quit immediately
+  app.quit();
+  process.exit(0);
+}
+
+// ===== HANDLE NSIS INSTALLER LAUNCH =====
+// When NSIS one-click installer launches the app after install,
+// it can pass special args. Handle gracefully.
+if (process.argv.includes('--squirrel-install') ||
+    process.argv.includes('--squirrel-updated') ||
+    process.argv.includes('--squirrel-uninstall') ||
+    process.argv.includes('--squirrel-obsolete')) {
+  app.quit();
+  process.exit(0);
+}
+
+let mainWindow = null;
+let serverProcess = null;
 let serverPort = 3000;
+let isQuitting = false;
 
 // Get the user data directory for local storage
 const userDataPath = app.getPath('userData');
@@ -26,7 +48,7 @@ function ensureDirectories() {
 function findAvailablePort(startPort) {
   return new Promise((resolve) => {
     const server = net.createServer();
-    server.listen(startPort, () => {
+    server.listen(startPort, '127.0.0.1', () => {
       const port = server.address().port;
       server.close(() => resolve(port));
     });
@@ -44,6 +66,7 @@ async function startServer() {
   const env = {
     ...process.env,
     PORT: String(serverPort),
+    HOSTNAME: '127.0.0.1',
     CBS_DATA_DIR: dataDir,
     CBS_UPLOADS_DIR: uploadsDir,
     NODE_ENV: 'production',
@@ -66,20 +89,13 @@ async function startServer() {
     return;
   }
 
-  serverProcess = spawn(process.execPath.includes('electron') ? 'node' : process.execPath, [serverScript], {
+  // Always use 'node' to run the server script
+  serverProcess = spawn('node', [serverScript], {
     env,
     cwd: serverDir,
     stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
   });
-
-  // Use node directly in packaged mode
-  if (isPackaged) {
-    serverProcess = spawn('node', [serverScript], {
-      env,
-      cwd: serverDir,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-  }
 
   serverProcess.stdout.on('data', (data) => {
     console.log(`[Server] ${data}`);
@@ -91,6 +107,14 @@ async function startServer() {
 
   serverProcess.on('error', (err) => {
     console.error('Failed to start server:', err);
+  });
+
+  serverProcess.on('exit', (code) => {
+    console.log(`Server process exited with code ${code}`);
+    if (!isQuitting) {
+      // Server crashed — don't open new windows
+      serverProcess = null;
+    }
   });
 
   // Wait for server to be ready
@@ -128,13 +152,18 @@ function waitForServer(port, retries = 30) {
 }
 
 function createWindow() {
+  // Don't create if one already exists
+  if (mainWindow) {
+    mainWindow.focus();
+    return;
+  }
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1024,
     minHeight: 700,
     title: 'CBS Accounting',
-    icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -151,10 +180,24 @@ function createWindow() {
 
   mainWindow.loadURL(`http://127.0.0.1:${serverPort}`);
 
-  // Open external links in browser
+  // Open external links in browser, NOT in new Electron windows
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost')) {
+      // Internal navigation — load in same window
+      mainWindow.loadURL(url);
+    } else {
+      // External link — open in default browser
+      shell.openExternal(url);
+    }
     return { action: 'deny' };
+  });
+
+  // Prevent navigation to new windows from target="_blank" links
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith(`http://127.0.0.1:${serverPort}`)) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -185,7 +228,16 @@ ipcMain.handle('open-folder-dialog', async () => {
   return result;
 });
 
-// App lifecycle
+// ===== APP LIFECYCLE =====
+
+// When a second instance tries to launch, focus the existing window
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
 app.whenReady().then(async () => {
   ensureDirectories();
 
@@ -197,6 +249,7 @@ app.whenReady().then(async () => {
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
+    skipTaskbar: true,
   });
   splash.loadURL(`data:text/html,
     <html>
@@ -225,22 +278,24 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  isQuitting = true;
   if (serverProcess) {
     serverProcess.kill();
+    serverProcess = null;
   }
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  app.quit();
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   if (serverProcess) {
     serverProcess.kill();
+    serverProcess = null;
   }
 });
 
 app.on('activate', () => {
-  if (mainWindow === null) {
+  if (mainWindow === null && serverProcess) {
     createWindow();
   }
 });
